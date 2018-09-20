@@ -165,9 +165,10 @@ public class Fingerprint extends CordovaPlugin {
             return true;
         }
 
-        final JSONObject arg_object = args.getJSONObject(0);
 
         if (action.equals("authenticate")) {
+            final JSONObject arg_object = args.getJSONObject(0);
+
             if (!arg_object.has("clientId") || !arg_object.has("clientSecret")) {
                 mPluginResult = new PluginResult(PluginResult.Status.ERROR);
                 mCallbackContext.error("Missing required parameters");
