@@ -40,6 +40,7 @@ import LocalAuthentication
         var pluginResult = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Something went wrong");
         var reason = "Authentication";
         let data  = command.arguments[0] as AnyObject?;
+        policy = .deviceOwnerAuthentication
 
         if let disableBackup = data?["disableBackup"] as! Bool? {
             if disableBackup {
