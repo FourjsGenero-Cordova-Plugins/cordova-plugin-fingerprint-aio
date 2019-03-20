@@ -5,7 +5,7 @@ import LocalAuthentication
 
     fileprivate var policy:LAPolicy!
 
-    func isAvailable(_ command: CDVInvokedUrlCommand){
+    @objc func isAvailable(_ command: CDVInvokedUrlCommand){
         let authenticationContext = LAContext();
         var biometryType = "finger";
         var error:NSError?;
@@ -35,7 +35,7 @@ import LocalAuthentication
         commandDelegate.send(pluginResult, callbackId:command.callbackId);
     }
 
-    func authenticate(_ command: CDVInvokedUrlCommand){
+    @objc func authenticate(_ command: CDVInvokedUrlCommand){
         let authenticationContext = LAContext();
         var pluginResult = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Something went wrong");
         var reason = "Authentication";
@@ -78,7 +78,7 @@ import LocalAuthentication
     override func pluginInitialize() {
         super.pluginInitialize()
 
-        policy = .deviceOwnerAuthenticationWithBiometrics
+        policy = .deviceOwnerAuthentication
     }
 }
 
