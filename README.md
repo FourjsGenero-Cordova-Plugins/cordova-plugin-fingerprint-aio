@@ -1,4 +1,5 @@
 # Cordova Plugin Fingerprint All-In-One
+# This fork is providing Genero BDL specific additions, see [here](fgl/README.md).
 ## **Android** and **iOS**
 
 [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/cordova-plugin-fingerprint-aio)
