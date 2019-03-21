@@ -7,8 +7,8 @@
 # samples are accurate and suitable for your purposes. Their inclusion is
 # purely for information purposes only.
 
-# calling make without parameters simply creates an GMI executable for the simulator
-# use "make gmi.install" to install on the simulator or device depending on the TARGET
+# use "make IDENTITY=<your_ios_certificate> PROVISIONING_PROFILE=<your_ios_profile> gmi.install" to install on a IOS device attached via USB
+# use "make openGST" to open the Genero Studio Project on Mac
 
 BUNDLE_IDENTIFIER   = com.4js.cdvauth
 BUNDLE_IDENTIFIER_GMA = com.fourjs.cdvauth
@@ -20,7 +20,7 @@ PROVISIONING_PROFILE=$(HOME)/Library/MobileDevice/Provisioning\ Profiles/4js_wil
 INSTALL=yes
 
 PLUGIN=cordova-plugin-fingerprint-aio
-AUTH_MODULE=fglcdvAuthBio.42m
+FGL_WRAPPER=fglcdvAuthBio.42m
 GMAPLUGIN=$(PLUGIN)
 # in case you build the demo when having the plugin checked out
 # then we use the fglcvdAuthBio.42m in the fgl dir of the plugin
@@ -40,16 +40,13 @@ endif
 
 _MODULES  = $(patsubst %.4gl, %.42m, $(wildcard *.4gl))
 ifdef IN_REPOSITORY
-MODULES = $(FGLLDPATH)/$(AUTH_MODULE) $(AUTH_MODULE) ../../$(AUTHMODULE) $(_MODULES)
+MODULES = $(FGLLDPATH)/$(FGL_WRAPPER) $(FGL_WRAPPER) $(_MODULES)
 else
 MODULES = $(_MODULES)
 endif
 FORMS    = $(patsubst %.per, %.42f, $(wildcard *.per))
 
 %.42m: %.4gl
-ifdef IN_REPOSITORY
-	rm -f $(AUTH_MODULE)
-endif
 	FGLLDPATH=$(FGLLDPATH) fglcomp -M $*
 
 %.42f: %.per
@@ -68,12 +65,12 @@ gmi.install: all
 	gmibuildtool --app-name=$(APPNAME) --bundle-id=$(BUNDLE_IDENTIFIER) --provisioning=$(PROVISIONING_PROFILE) --certificate=$(IDENTITY) --device=$(DEVICE) --install=$(INSTALL) --mode=$(MODE) --build-cordova=$(PLUGIN)
 
 ifdef IN_REPOSITORY
-$(FGLLDPATH)/$(AUTH_MODULE): $(FGLLDPATH)/fglcdvAuthBio.4gl
+$(FGLLDPATH)/$(FGL_WRAPPER): $(FGLLDPATH)/fglcdvAuthBio.4gl
 	make -C $(FGLLDPATH)
 endif
 
-$(AUTH_MODULE):
-	cp $(FGLLDPATH)/$(AUTH_MODULE) $@
+$(FGL_WRAPPER): $(FGLLDPATH)/$(FGL_WRAPPER)
+	cp $(FGLLDPATH)/$(FGL_WRAPPER) $@
 
 gma.build: all 
 ifdef IN_REPOSITORY
@@ -85,6 +82,9 @@ endif
 gma.installsim: gma.build
 	$$ANDROID_SDK_ROOT/platform-tools/adb install -r ./gma/project/app/build/app/outputs/apk/app-unsigned.apk
 
+openGST: all
+	open Auth.4pw
+
 clean::
 	rm -rf build bin distbin gma
-	rm -f *.42* gmi/*.a gmi/link_flags.sh *.4pwvs *.4pwdb cordovamap.txt
+	rm -f *.42* gmi/*.a gmi/link_flags.sh *.4pwvs *.4pwdb *.4pwcfg cordovamap.txt
