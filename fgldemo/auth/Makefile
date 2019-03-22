@@ -8,7 +8,12 @@
 # purely for information purposes only.
 
 # use "make IDENTITY=<your_ios_certificate> PROVISIONING_PROFILE=<your_ios_profile> gmi.install" to install on a IOS device attached via USB
-# use "make openGST" to open the Genero Studio Project on Mac
+# use "make openGSTGMI" to open the Genero Studio Project on Mac for GMI
+# use "make openGSTGMA" to open the Genero Studio Project on Mac for GMA:
+# note that GMADIR must not have spaces in the name for installing 
+# use a GMADIR physically outside GSTDIR and configure GST for that GMADIR
+
+
 
 BUNDLE_IDENTIFIER   = com.4js.cdvauth
 BUNDLE_IDENTIFIER_GMA = com.fourjs.cdvauth
@@ -35,7 +40,7 @@ ifneq ($(wildcard ../../fgldemo),)
   DEMODIR=$(shell  dirname $(ABSPATH))
   PLUGINDIR=$(shell dirname $(DEMODIR))
   GMAPLUGIN=$(notdir $(PLUGINDIR))
-# $(warning ABSPATH=$(ABSPATH),DEMODIR=$(DEMODIR),PLUGINDIR=$(PLUGINDIR),GMAPLUGIN=$(GMAPLUGIN))
+  $(echo ABSPATH=$(ABSPATH),DEMODIR=$(DEMODIR),PLUGINDIR=$(PLUGINDIR),GMAPLUGIN=$(GMAPLUGIN))
 endif
 
 _MODULES  = $(patsubst %.4gl, %.42m, $(wildcard *.4gl))
@@ -74,17 +79,32 @@ $(FGL_WRAPPER): $(FGLLDPATH)/$(FGL_WRAPPER)
 
 gma.build: all 
 ifdef IN_REPOSITORY
-#build the plugin out of this repository and do not use the bundled one
+#build the plugin out of this repository
 	cd ../../.. && gmabuildtool scaffold --install-plugins $(GMAPLUGIN) && cd -
 endif
+#note this fails if GMADIR has a space in the name (if insidse GST)
+#you need to create a symbolic link
 	gmabuildtool build --build-quietly --build-cordova $(GMAPLUGIN) --build-app-package-name $(BUNDLE_IDENTIFIER_GMA) 
 
-gma.installsim: gma.build
-	$$ANDROID_SDK_ROOT/platform-tools/adb install -r ./gma/project/app/build/app/outputs/apk/app-unsigned.apk
+#make GMA_USB=-d gma.install   to install via USB
+gma.install: gma.build
+	$$ANDROID_SDK_ROOT/platform-tools/adb $(GMA_USB) install -r `find . -name app-unsigned.apk`
 
-openGST: all
+openGSTGMI: all
+	open Auth.4pw
+
+#we need to install the plugin before
+#take care that the GMADIR used here and the one used in Studio actually match
+openGSTGMA: gma.build
+#	cat Auth.4pw | sed -e 's/<DynamicProperty name="gma-cordova" value=".*$$/<DynamicProperty name="gma-cordova" value="$(subst /,\/,$(PLUGINDIR))"\/\>/' > Auth1.4pw
 	open Auth.4pw
 
 clean::
 	rm -rf build bin distbin gma
 	rm -f *.42* gmi/*.a gmi/link_flags.sh *.4pwvs *.4pwdb *.4pwcfg cordovamap.txt
+
+distclean: clean
+ifdef IN_REPOSITORY
+	make -C $(FGLLDPATH) clean
+endif
+
