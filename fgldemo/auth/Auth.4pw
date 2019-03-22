@@ -83,11 +83,12 @@
     </Platform>
   </PlatformList>
   <Group label="Packages" language="Genero">
-    <Package binaryName="Android" label="Android" platform="Android" dependencies="400358049,781919164,159917928,212784684,715422167,362164715,313644474">
+    <Package binaryName="Android" dependencies="400358049,781919164,159917928,212784684,715422167,362164715,313644474" label="Android" platform="Android">
       <DynamicProperty name="gma-cordova" value="cordova-plugin-fingerprint-aio"/>
       <DynamicProperty name="packageId" value="com.fourjs.cdvauth"/>
       <DynamicProperty name="packageLabel" value="Auth"/>
       <Directory description="Binaries" destinationDirectory="$(ProjectDir)/bin" includedFiles="*.42?" label="Binaries" recursive="false" sourceDirectory="$(ProjectDir)/bin"/>
+      <Directory description="Plugin Wrapper" includedFiles="fglcdvAuthBio.42m" label="libwrapper" recursive="false" sourceDirectory="$(ProjectDir)"/>
     </Package>
     <Package binaryName="IOS Device" dependencies="400358049,781919164,159917928,212784684,715422167,362164715,313644474" description="IOS device" label="IOS Device" platform="iOS">
       <DynamicProperty name="gmi-cordova" value="$(ProjectDir)/../.."/>
