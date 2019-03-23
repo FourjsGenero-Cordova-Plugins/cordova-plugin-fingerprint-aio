@@ -18,6 +18,7 @@ DOCS_XA=$(patsubst %.4gl,%.xa,$(wildcard *.4gl))
 all:: $(MODS)
 
 doc: $(DOCS_XA)
+	cp *.html ../docs
 
 clean:
 	rm -f *.42?
