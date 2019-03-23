@@ -1,6 +1,6 @@
 {
   "name": "cordova-plugin-fingerprint-aio",
-  "version": "1.4.0-0",
+  "version": "1.6.0",
   "description": "Cordova plugin to use fingerprint authentication on Android and iOS",
   "cordova": {
     "id": "cordova-plugin-fingerprint-aio",
@@ -36,8 +36,8 @@
   "devDependencies": {
     "cordova-paramedic": "git+https://github.com/apache/cordova-paramedic.git",
     "cordova-plugin-xml": "^0.1.2",
-    "eslint": "^4.19.1",
-    "jasmine": "^2.8.0"
+    "eslint": "^5.7.0",
+    "jasmine": "^3.2.0"
   },
   "scripts": {
     "test": "./node_modules/cordova-paramedic/main.js --plugin . --platform",
