@@ -1,5 +1,5 @@
 *fglcdvAuthBio* is the Genero wrapper library around the cordova Fingerprint/FaceID plugin.
-Use it in your BDL programs by using
+Use it in your Genero programs by using
 ```
 
 IMPORT FGL fglcdvAuthBio
