@@ -23,18 +23,21 @@ import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CordovaInterface;
 
 import android.annotation.TargetApi;
-import android.app.FragmentTransaction;
+import android.app.Activity;
 import android.app.KeyguardManager;
+import android.content.Intent;
 import android.content.res.Configuration;
 import android.content.res.Resources;
-import android.hardware.fingerprint.FingerprintManager;
-import android.os.Bundle;
 import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyPermanentlyInvalidatedException;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.util.Log;
+
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.core.content.ContextCompat;
+import androidx.fragment.app.FragmentActivity;
 
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
@@ -50,7 +53,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
-import java.util.Locale;
+import java.util.concurrent.Executor;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -59,21 +62,26 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 
+/**
+ * Uses {@link androidx.biometric.BiometricPrompt} (AndroidX Biometric library) instead of the
+ * legacy {@code android.hardware.fingerprint.FingerprintManager}, which was removed from the
+ * Android SDK starting with API 37. BiometricPrompt shows its own system dialog, so the previous
+ * custom {@code FingerprintUiHelper}/{@code FingerprintAuthenticationDialogFragment} UI is no
+ * longer needed.
+ */
 @TargetApi(23)
 public class Fingerprint extends CordovaPlugin {
 
     public static final String TAG = "Fingerprint";
     public static String packageName;
 
-    private static final String DIALOG_FRAGMENT_TAG = "FpAuthDialog";
     private static final String ANDROID_KEY_STORE = "AndroidKeyStore";
+    private static final int REQUEST_CODE_CONFIRM_DEVICE_CREDENTIALS = 1;
 
     KeyguardManager mKeyguardManager;
-    FingerprintAuthenticationDialogFragment mFragment;
     public static KeyStore mKeyStore;
     public static KeyGenerator mKeyGenerator;
     public static Cipher mCipher;
-    private FingerprintManager mFingerPrintManager;
 
     public static CallbackContext mCallbackContext;
     public static PluginResult mPluginResult;
@@ -117,8 +125,6 @@ public class Fingerprint extends CordovaPlugin {
         }
 
         mKeyguardManager = cordova.getActivity().getSystemService(KeyguardManager.class);
-        mFingerPrintManager = cordova.getActivity().getApplicationContext()
-                .getSystemService(FingerprintManager.class);
 
         try {
             mKeyGenerator = KeyGenerator.getInstance(
@@ -190,56 +196,32 @@ public class Fingerprint extends CordovaPlugin {
 
             if (isFingerprintAuthAvailable()) {
                 SecretKey key = getSecretKey();
-                boolean isCipherInit = true;
                 if (key == null) {
                     if (createKey()) {
                         key = getSecretKey();
                     }
                 }
-                if (key != null && !initCipher()) {
-                    isCipherInit = false;
-                }
-                if (key != null) {
-                    cordova.getActivity().runOnUiThread(new Runnable() {
-                        public void run() {
-                            // Set up the crypto object for later. The object will be authenticated by use
-                            // of the fingerprint.
-                            mFragment = new FingerprintAuthenticationDialogFragment();
-                            Bundle bundle = new Bundle();
-                            bundle.putBoolean("disableBackup", mDisableBackup);
-                            mFragment.setArguments(bundle);
+                final boolean isCipherInit = key != null && initCipher();
 
-                            if (initCipher()) {
-                                mFragment.setCancelable(false);
-                                // Show the fingerprint dialog. The user has the option to use the fingerprint with
-                                // crypto, or you can fall back to using a server-side verified password.
-                                mFragment.setCryptoObject(new FingerprintManager.CryptoObject(mCipher));
-                                FragmentTransaction transaction = cordova.getActivity().getFragmentManager().beginTransaction();
-                                transaction.add(mFragment, DIALOG_FRAGMENT_TAG);
-                                transaction.commitAllowingStateLoss();
-                            } else {
-                                if (!mDisableBackup) {
-                                    // This happens if the lock screen has been disabled or or a fingerprint got
-                                    // enrolled. Thus show the dialog to authenticate with their password
-                                    mFragment.setCryptoObject(new FingerprintManager
-                                            .CryptoObject(mCipher));
-                                    mFragment.setStage(FingerprintAuthenticationDialogFragment
-                                            .Stage.NEW_FINGERPRINT_ENROLLED);
-                                    FragmentTransaction transaction = cordova.getActivity().getFragmentManager().beginTransaction();
-                                    transaction.add(mFragment, DIALOG_FRAGMENT_TAG);
-                                    transaction.commitAllowingStateLoss();
-                                } else {
-                                    mCallbackContext.error("Failed to init Cipher and backup disabled.");
-                                    mPluginResult = new PluginResult(PluginResult.Status.ERROR);
-                                    mCallbackContext.sendPluginResult(mPluginResult);
-                                }
-                            }
+                cordova.getActivity().runOnUiThread(new Runnable() {
+                    public void run() {
+                        if (isCipherInit) {
+                            // Show the biometric prompt. The user has the option to use the
+                            // biometric with crypto, or fall back to the device credential
+                            // (unless disableBackup is set).
+                            showBiometricPrompt(new BiometricPrompt.CryptoObject(mCipher));
+                        } else if (!mDisableBackup) {
+                            // This happens if the lock screen has been disabled or a fingerprint
+                            // got enrolled. Thus fall back to confirming the device credential.
+                            showDeviceCredentialFallback();
+                        } else {
+                            mCallbackContext.error("Failed to init Cipher and backup disabled.");
+                            mPluginResult = new PluginResult(PluginResult.Status.ERROR);
+                            mCallbackContext.sendPluginResult(mPluginResult);
                         }
-                    });
-                    mPluginResult.setKeepCallback(true);
-                } else {
-                    mCallbackContext.sendPluginResult(mPluginResult);
-                }
+                    }
+                });
+                mPluginResult.setKeepCallback(true);
 
             } else {
                 mPluginResult = new PluginResult(PluginResult.Status.ERROR);
@@ -248,17 +230,18 @@ public class Fingerprint extends CordovaPlugin {
             }
             return true;
         } else if (action.equals("isAvailable")) {
-            if(isFingerprintAuthAvailable() && mFingerPrintManager.isHardwareDetected() && mFingerPrintManager.hasEnrolledFingerprints()){
-              mPluginResult = new PluginResult(PluginResult.Status.OK, "finger");
-              mCallbackContext.success("finger");
-            }else{
-              mPluginResult = new PluginResult(PluginResult.Status.ERROR);
+            if (isFingerprintAuthAvailable()) {
+                mPluginResult = new PluginResult(PluginResult.Status.OK, "finger");
+                mCallbackContext.success("finger");
+            } else {
+                mPluginResult = new PluginResult(PluginResult.Status.ERROR);
 
-              if (mFingerPrintManager.isHardwareDetected() && !mFingerPrintManager.hasEnrolledFingerprints()) {
-                mCallbackContext.error("Fingerprint authentication not ready");
-              } else {
-                mCallbackContext.error("Fingerprint authentication not available");
-              }
+                if (getBiometricManager().canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+                        == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) {
+                    mCallbackContext.error("Fingerprint authentication not ready");
+                } else {
+                    mCallbackContext.error("Fingerprint authentication not available");
+                }
             }
             mCallbackContext.sendPluginResult(mPluginResult);
             return true;
@@ -266,9 +249,101 @@ public class Fingerprint extends CordovaPlugin {
         return false;
     }
 
+    private BiometricManager getBiometricManager() {
+        return BiometricManager.from(cordova.getActivity().getApplicationContext());
+    }
+
     private boolean isFingerprintAuthAvailable() {
-        return mFingerPrintManager.isHardwareDetected()
-                && mFingerPrintManager.hasEnrolledFingerprints();
+        return getBiometricManager().canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+                == BiometricManager.BIOMETRIC_SUCCESS;
+    }
+
+    /**
+     * Shows the system BiometricPrompt dialog bound to the given crypto object.
+     */
+    private void showBiometricPrompt(BiometricPrompt.CryptoObject cryptoObject) {
+        FragmentActivity activity = (FragmentActivity) cordova.getActivity();
+        Executor executor = ContextCompat.getMainExecutor(activity);
+
+        BiometricPrompt biometricPrompt = new BiometricPrompt(activity, executor,
+                new BiometricPrompt.AuthenticationCallback() {
+                    @Override
+                    public void onAuthenticationError(int errorCode, CharSequence errString) {
+                        if (!mDisableBackup
+                                && (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
+                                || errorCode == BiometricPrompt.ERROR_USER_CANCELED
+                                || errorCode == BiometricPrompt.ERROR_CANCELED)) {
+                            showDeviceCredentialFallback();
+                        } else {
+                            onCancelled();
+                        }
+                    }
+
+                    @Override
+                    public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
+                        onAuthenticated(true /* withFingerprint */);
+                    }
+
+                    @Override
+                    public void onAuthenticationFailed() {
+                        // A biometric was presented but not recognized. This is not fatal: the
+                        // prompt stays open and the user can retry, so nothing to do here.
+                    }
+                });
+
+        Resources resources = activity.getResources();
+        String title = getLocalizedString(resources, "fingerprint_auth_dialog_title", "Authenticate");
+        String description = getLocalizedString(resources, "fingerprint_description", null);
+        String cancelText = getLocalizedString(resources, "fingerprint_cancel", "Cancel");
+
+        BiometricPrompt.PromptInfo.Builder promptInfoBuilder = new BiometricPrompt.PromptInfo.Builder()
+                .setTitle(title)
+                .setNegativeButtonText(cancelText)
+                .setConfirmationRequired(false);
+
+        if (description != null) {
+            promptInfoBuilder.setDescription(description);
+        }
+
+        biometricPrompt.authenticate(promptInfoBuilder.build(), cryptoObject);
+    }
+
+    /**
+     * Falls back to confirming the device credential (PIN/pattern/password) via the Keyguard,
+     * mirroring the "NEW_FINGERPRINT_ENROLLED"/"BACKUP" stages of the previous custom dialog.
+     */
+    private void showDeviceCredentialFallback() {
+        if (mKeyguardManager == null || !mKeyguardManager.isKeyguardSecure()) {
+            mCallbackContext.error("Secure lock screen required!");
+            mPluginResult = new PluginResult(PluginResult.Status.ERROR);
+            mCallbackContext.sendPluginResult(mPluginResult);
+            return;
+        }
+
+        Intent intent = mKeyguardManager.createConfirmDeviceCredentialIntent(null, null);
+        if (intent != null) {
+            cordova.startActivityForResult(this, intent, REQUEST_CODE_CONFIRM_DEVICE_CREDENTIALS);
+        } else {
+            onCancelled();
+        }
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent intent) {
+        if (requestCode == REQUEST_CODE_CONFIRM_DEVICE_CREDENTIALS) {
+            // Challenge completed, proceed with using cipher
+            if (resultCode == Activity.RESULT_OK) {
+                onAuthenticated(false /* used backup */);
+            } else {
+                // The user canceled or didn't complete the lock screen operation.
+                onCancelled();
+            }
+        }
+    }
+
+    private static String getLocalizedString(Resources resources, String name, String fallback) {
+        int id = resources.getIdentifier(name, "string", packageName);
+        return id != 0 ? resources.getString(id) : fallback;
     }
 
     /**
@@ -289,7 +364,7 @@ public class Fingerprint extends CordovaPlugin {
             initCipher = true;
         } catch (InvalidKeyException e) {
             errorMessage = initCipherExceptionErrorPrefix + "InvalidKeyException: " + e.toString();
-            
+
         }
         if (!initCipher) {
             Log.e(TAG, errorMessage);
